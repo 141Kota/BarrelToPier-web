@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <!-- 拡大の禁止・ノッチの下まで広げる（viewport-fit=cover）。余白は、下の padding（env(safe-area-inset-*)）で空ける -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+  <!-- ホーム画面に追加したとき、全画面で開く -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Barrel to Pier">
+  <meta name="theme-color" content="#86accc">
+  <meta name="format-detection" content="telephone=no">
+  <!-- favicon.ico の 404 を出さない（小さな画像を直接指定） -->
+  <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mOcvfzufwAIdgNgqjwcmwAAAABJRU5ErkJggg==">
+  <title>Barrel to Pier</title>
+  <style>
+    /* 背景の色は、ゲームの海（昼の背景のグラデーション）に近づける */
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      background: #86accc;
+      /* 引っ張って更新の禁止、拡大・長押し・ダブルタップの動きの禁止 */
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+    }
+    #unity-container {
+      position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+      background: linear-gradient(#86accc, #b6d0e2);
+      /* ノッチ・ホームバーを避ける（ゲームの画面は、この内側に収まる） */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      box-sizing: border-box;
+    }
+    #unity-canvas {
+      display: block; width: 100%; height: 100%;
+      background: transparent;
+      touch-action: none;
+      outline: none;
+    }
+    #unity-loading {
+      position: fixed; left: 0; right: 0; top: 0; bottom: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #1c2a40; text-align: center; pointer-events: none;
+    }
+    #unity-loading .title { font-size: 28px; letter-spacing: 0.06em; margin-bottom: 18px; }
+    #unity-loading .bar { width: min(60vw, 360px); height: 10px; border-radius: 5px; background: rgba(28, 42, 64, 0.2); overflow: hidden; }
+    #unity-loading .fill { width: 0%; height: 100%; background: #345f95; transition: width 0.2s; }
+    #unity-loading .text { margin-top: 12px; font-size: 16px; }
+    #unity-warning {
+      position: fixed; left: 50%; top: 8px; transform: translateX(-50%);
+      background: #fff; color: #7a1010; padding: 8px 14px; border-radius: 6px; display: none; font-size: 14px; z-index: 10;
+    }
+    #debug-log {
+      position: fixed; left: 0; right: 0; bottom: 0; max-height: 40%; overflow: auto; z-index: 20; display: none;
+      margin: 0; padding: 4px 6px; background: rgba(0, 0, 0, 0.78); color: #d6e6f5;
+      font: 11px/1.35 monospace; white-space: pre-wrap; word-break: break-all; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+  </div>
+  <div id="unity-loading">
+    <div class="title">Barrel to Pier</div>
+    <div class="bar"><div class="fill" id="unity-fill"></div></div>
+    <div class="text" id="unity-text">読み込み中… 0%</div>
+  </div>
+  <div id="unity-warning"></div>
+  <pre id="debug-log"></pre>
+
+  <script>
+    // index.html?debug=1 のときだけ、画面の下にログ欄（console.log / error、未処理のエラー、読み込みの失敗の、最新 20 行）
+    (function () {
+      var el = document.getElementById("debug-log");
+      if (!/[?&]debug=1(&|$)/.test(location.search)) return;
+      el.style.display = "block";
+      var lines = [];
+      function add(kind, args) {
+        var s = Array.prototype.map.call(args, function (a) {
+          try { return typeof a === "string" ? a : (a && a.stack) || JSON.stringify(a); } catch (e) { return String(a); }
+        }).join(" ");
+        lines.push(kind + " " + s);
+        if (lines.length > 20) lines.shift();
+        el.textContent = lines.join("\n");
+        el.scrollTop = el.scrollHeight;
+      }
+      ["log", "error"].forEach(function (k) {
+        var orig = console[k];
+        console[k] = function () { add(k === "error" ? "[E]" : "[L]", arguments); orig.apply(console, arguments); };
+      });
+      window.addEventListener("error", function (e) { add("[E]", [e.message + " (" + (e.filename || "") + ":" + (e.lineno || 0) + ")"]); });
+      window.addEventListener("unhandledrejection", function (e) { add("[E]", ["未処理: " + (e.reason && e.reason.message || e.reason)]); });
+      window.debugLogAdd = add;
+    })();
+  </script>
+  <script>
+    // ダブルタップの拡大・ピンチ・長押しの選択や、右クリックのメニューを止める（Safari は、touch-action だけでは止まらないことがある）
+    (function () {
+      var lastEnd = 0;
+      document.addEventListener("touchend", function (e) {
+        var now = Date.now();
+        if (now - lastEnd < 350) e.preventDefault();
+        lastEnd = now;
+      }, { passive: false });
+      ["gesturestart", "gesturechange", "gestureend"].forEach(function (name) {
+        document.addEventListener(name, function (e) { e.preventDefault(); });
+      });
+      document.addEventListener("touchmove", function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+      document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      document.addEventListener("selectstart", function (e) { e.preventDefault(); });
+    })();
+
+    var container = document.querySelector("#unity-container");
+    var canvas = document.querySelector("#unity-canvas");
+    var loading = document.querySelector("#unity-loading");
+    var fill = document.querySelector("#unity-fill");
+    var text = document.querySelector("#unity-text");
+    var warning = document.querySelector("#unity-warning");
+
+    function showMessage(msg) {
+      warning.textContent = msg;
+      warning.style.display = "block";
+      setTimeout(function () { warning.style.display = "none"; }, 6000);
+    }
+
+    var buildUrl = "Build";
+    var loaderUrl = buildUrl + "/WebGL.loader.js";
+    var config = {
+      dataUrl: buildUrl + "/WebGL.data",
+      frameworkUrl: buildUrl + "/WebGL.framework.js",
+      codeUrl: buildUrl + "/WebGL.wasm",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "DefaultCompany",
+      productName: "BarrelToPier",
+      productVersion: "1.0",
+      showBanner: showMessage,
+      // 画面の細かさ（iPhone は 3 倍。重いので 2 倍まで）
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    };
+
+    var script = document.createElement("script");
+    script.src = loaderUrl;
+    function fail(reason, detail) {
+      text.textContent = reason;
+      text.style.color = "#7a1010";
+      console.error(reason + " " + (detail || ""));
+    }
+    script.onerror = function () {
+      fail("読み込めませんでした：Build フォルダのファイル（" + loaderUrl + "）が見つかりません。", "");
+    };
+    script.onload = function () {
+      createUnityInstance(canvas, config, function (progress) {
+        var percent = Math.round(progress * 100);
+        fill.style.width = percent + "%";
+        text.textContent = percent >= 100 ? "起動中…" : "読み込み中… " + percent + "%";
+      }).then(function (unityInstance) {
+        loading.style.display = "none";
+        window.unityInstance = unityInstance;
+      }).catch(function (message) {
+        var m = String(message && message.message || message);
+        var reason = /memory|alloc|out of/i.test(m)
+          ? "読み込めませんでした：端末のメモリが足りません。ほかのアプリやタブを閉じて、もう一度開いてください。"
+          : "読み込めませんでした：" + m;
+        fail(reason, "");
+      });
+    };
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>
