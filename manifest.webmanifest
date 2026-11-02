@@ -1,0 +1,9 @@
+{
+  "name": "Barrel to Pier",
+  "short_name": "Barrel to Pier",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#86accc",
+  "theme_color": "#86accc"
+}

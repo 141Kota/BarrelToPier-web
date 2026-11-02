@@ -55,6 +55,22 @@
       position: fixed; left: 50%; top: 8px; transform: translateX(-50%);
       background: #fff; color: #7a1010; padding: 8px 14px; border-radius: 6px; display: none; font-size: 14px; z-index: 10;
     }
+    /* 縦向きのときの「横にしてください」：ゲームの読み込みを待たず、ページが即座に出す（JS が html に portrait を付ける） */
+    #rotate-cover {
+      position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2147483647;
+      display: none; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+      box-sizing: border-box; background: #86accc; color: #1c2a40; text-align: center;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      touch-action: none;
+    }
+    html.portrait #rotate-cover { display: flex; }
+    html.portrait #unity-canvas { pointer-events: none; }
+    #rotate-cover svg { width: 72px; height: 72px; animation: rotate-phone 2.4s ease-in-out infinite; }
+    #rotate-cover p {
+      margin: 0; max-width: 80vw; font-size: clamp(16px, 5vw, 28px); line-height: 1.4;
+      overflow-wrap: anywhere; text-wrap: balance;
+    }
+    @keyframes rotate-phone { 0%, 15% { transform: rotate(0deg); } 65%, 100% { transform: rotate(-90deg); } }
     #debug-log {
       position: fixed; left: 4px; bottom: 4px; width: 40%; max-width: 360px; max-height: 6.5em; overflow: hidden; z-index: 20; display: none;
       margin: 0; padding: 2px 4px; background: rgba(0, 0, 0, 0.45); color: #d6e6f5; border-radius: 4px;
@@ -70,6 +86,10 @@
     <div class="title">Barrel to Pier</div>
     <div class="bar"><div class="fill" id="unity-fill"></div></div>
     <div class="text" id="unity-text">読み込み中… 0%</div>
+  </div>
+  <div id="rotate-cover" role="alert">
+    <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="14" y="4" width="20" height="40" rx="4" fill="#1c2a40"/><rect x="17" y="10" width="14" height="26" rx="1" fill="#86accc"/></svg>
+    <p>スマホを、横にしてください</p>
   </div>
   <div id="unity-warning"></div>
   <pre id="debug-log"></pre>
@@ -129,12 +149,17 @@
       setTimeout(function () { warning.style.display = "none"; }, 6000);
     }
 
+    // ビルド ID（ビルドのたびに、WebGLBuild が "20261102125050" を置き換える。置き換わっていなければ、自動更新と ?v= は使わない）。
+    // Build の各ファイルの URL に ?v=<ID> を足して、古いキャッシュ（GitHub Pages は約 10 分）を使わない
+    window.BUILD_ID = "20261102125050";
+    var HAS_BUILD_ID = !/^__/.test(window.BUILD_ID);
+    var vq = HAS_BUILD_ID ? "?v=" + encodeURIComponent(window.BUILD_ID) : "";
     var buildUrl = "Build";
-    var loaderUrl = buildUrl + "/WebGL.loader.js";
+    var loaderUrl = buildUrl + "/WebGL.loader.js" + vq;
     var config = {
-      dataUrl: buildUrl + "/WebGL.data",
-      frameworkUrl: buildUrl + "/WebGL.framework.js",
-      codeUrl: buildUrl + "/WebGL.wasm",
+      dataUrl: buildUrl + "/WebGL.data" + vq,
+      frameworkUrl: buildUrl + "/WebGL.framework.js" + vq,
+      codeUrl: buildUrl + "/WebGL.wasm" + vq,
       streamingAssetsUrl: "StreamingAssets",
       companyName: "DefaultCompany",
       productName: "BarrelToPier",
@@ -146,9 +171,139 @@
     };
 
     // 画面の回転・アドレスバーの出入りで、キャンバスの大きさを追従させる（CSS の 100% は自動で追従するが、描画の画素数は Unity が resize で更新する。念のため通知する）
+    // ゲーム（C#）は、キャンバスの大きさ・セーフエリア・devicePixelRatio を、0.1〜0.25 秒ごとに、ここから読み直す（BarrelBridge.jslib）。
+    // ここでは、変化の合図（resize）を出し、起動から 3 秒は、100 ms ごとに、値を見て、変わっていれば、合図を出す
     function notifyResize() { window.dispatchEvent(new Event("resize")); }
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", notifyResize);
-    window.addEventListener("orientationchange", function () { setTimeout(notifyResize, 150); });
+    function envKey() {
+      var inset = "";
+      try {
+        var el = document.createElement("div");
+        el.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+        document.body.appendChild(el);
+        var cs = window.getComputedStyle(el);
+        inset = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(",");
+        document.body.removeChild(el);
+      } catch (e) {}
+      return [window.innerWidth, window.innerHeight, canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio, inset].join("|");
+    }
+    var lastEnv = "";
+    function checkEnv() {
+      var k = envKey();
+      if (k !== lastEnv) { lastEnv = k; notifyResize(); }
+    }
+    ["resize", "pageshow", "visibilitychange"].forEach(function (n) { window.addEventListener(n, checkEnv); });
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", function () { checkEnv(); notifyResize(); });
+    window.addEventListener("orientationchange", function () { setTimeout(notifyResize, 150); checkEnv(); });
+    (function () {
+      var t0 = Date.now();
+      var id = setInterval(function () { checkEnv(); if (Date.now() - t0 > 3000) clearInterval(id); }, 100);
+    })();
+
+    // ---- 画面の回転：縦向きの覆い（即時）と、値が安定してからの、配置の作り直し ----
+    // 覆いは matchMedia('(orientation: portrait)') の change（即時）で切り替える（resize・orientationchange は予備）。タッチ端末だけ。
+    // 縦のあいだはキャンバスへの入力を止め（CSS）、Unity に一時停止（OnBrowserPaused "1"）を知らせる。横に戻ったら再開（"0"）。
+    // 回転・サイズ変更のあと、50 ms ごとに大きさ・セーフエリア・dpr を読み、連続 6 回同じ、または 2 秒で確定し、確定した値（点）を Unity に渡す
+    // （Unity は配置をすべて作り直す）。確定の 0.5 秒後に、Unity が、もう一度作り直す（何度でも同じ結果）。
+    (function () {
+      var root = document.documentElement;
+      var hasTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints || 0) > 0;
+      var mq = window.matchMedia ? window.matchMedia("(orientation: portrait)") : null;
+      var pausedSent = null, pending = [];
+      function send(method, arg) {
+        var u = window.unityInstance;
+        if (!u) { pending = pending.filter(function (p) { return p[0] !== method; }); pending.push([method, arg]); return; }
+        try { u.SendMessage("BarrelEnvReceiver", method, arg); } catch (e) {}
+      }
+      window.flushPendingUnityMessages = function () { var q = pending; pending = []; q.forEach(function (p) { send(p[0], p[1]); }); startSettle(); };
+      function isPortrait() { return mq ? mq.matches : window.innerHeight > window.innerWidth; }
+      function updateCover() {
+        var p = hasTouch && isPortrait();
+        root.classList.toggle("portrait", p);
+        if (pausedSent !== p) { pausedSent = p; send("OnBrowserPaused", p ? "1" : "0"); }
+      }
+      function insets() {
+        var out = [];
+        ["left", "top", "right", "bottom"].forEach(function (n) {
+          var v = 0;
+          try {
+            var el = document.createElement("div");
+            el.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-" + n + ":env(safe-area-inset-" + n + ")";
+            document.body.appendChild(el);
+            v = parseFloat(window.getComputedStyle(el)["padding" + n.charAt(0).toUpperCase() + n.slice(1)]) || 0;
+            document.body.removeChild(el);
+          } catch (e) {}
+          out.push(v);
+        });
+        return out;
+      }
+      function sample() {
+        var vv = window.visualViewport;
+        var w = canvas.clientWidth || (vv && vv.width) || window.innerWidth, h = canvas.clientHeight || (vv && vv.height) || window.innerHeight;
+        return [w, h, window.devicePixelRatio || 1].concat(insets());
+      }
+      function same(a, b) {
+        for (var i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) >= (i === 2 ? 0.01 : 0.5)) return false;
+        return true;
+      }
+      var timer = null;
+      function startSettle() {
+        if (timer) clearInterval(timer);
+        var last = null, count = 0, t0 = Date.now();
+        timer = setInterval(function () {
+          var s = sample();
+          if (last && same(s, last)) count++; else { count = 1; last = s; }
+          if (count >= 6 || Date.now() - t0 >= 2000) {
+            clearInterval(timer); timer = null;
+            if (isPortrait() && hasTouch) return;   // 縦のあいだは、配置しない（横に戻ったときに、また確定する）
+            send("OnScreenSettled", last.join(","));
+          }
+        }, 50);
+      }
+      function onChange() { updateCover(); startSettle(); }
+      if (mq) { if (mq.addEventListener) mq.addEventListener("change", onChange); else if (mq.addListener) mq.addListener(onChange); }
+      window.addEventListener("resize", onChange);
+      window.addEventListener("orientationchange", onChange);
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", onChange);
+      updateCover();
+    })();
+
+    // 新しい版の自動更新：起動時と、アプリに戻ったとき（visible、pageshow）に version.json（キャッシュなし）を取り、ID が違えば、更新する。
+    // 同じ ID では、1 回しかしない（sessionStorage の印。無限に繰り返さない）
+    function showUpdating() {
+      var d = document.createElement("div");
+      d.textContent = "更新中…";
+      d.style.cssText = "position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:rgba(28,42,64,0.85);color:#fff;padding:6px 16px;border-radius:14px;font-size:14px";
+      document.body.appendChild(d);
+    }
+    function reloadTo(id) {
+      showUpdating();
+      var go = function () { location.replace(location.pathname + "?v=" + encodeURIComponent(id)); };
+      try {
+        // セーブを確実に書き込む（IndexedDB へ）。終わらなくても、1 秒で進む
+        var done = false, once = function () { if (!done) { done = true; go(); } };
+        setTimeout(once, 1000);
+        if (window.barrelSyncFiles) window.barrelSyncFiles(once);
+        else once();
+      } catch (e) { go(); }
+    }
+    function checkVersion() {
+      if (!HAS_BUILD_ID) return;
+      fetch("version.json?t=" + Date.now(), { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          var id = j && j.buildId;
+          if (!id || id === window.BUILD_ID) return;
+          try {
+            if (sessionStorage.getItem("btp.updatedTo") === id) return;
+            sessionStorage.setItem("btp.updatedTo", id);
+          } catch (e) { return; }
+          reloadTo(id);
+        })
+        .catch(function () {});
+    }
+    checkVersion();
+    window.addEventListener("pageshow", checkVersion);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkVersion(); });
 
     var script = document.createElement("script");
     script.src = loaderUrl;
@@ -168,6 +323,7 @@
       }).then(function (unityInstance) {
         loading.style.display = "none";
         window.unityInstance = unityInstance;
+        if (window.flushPendingUnityMessages) window.flushPendingUnityMessages();
       }).catch(function (message) {
         var m = String(message && message.message || message);
         var reason = /memory|alloc|out of/i.test(m)
