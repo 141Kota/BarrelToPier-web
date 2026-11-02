@@ -143,15 +143,53 @@
     var text = document.querySelector("#unity-text");
     var warning = document.querySelector("#unity-warning");
 
+    // 致命的なエラーの案内：原因の多くは、公開の途中や古いキャッシュ。1 回だけ、?v= を変えて自動で読み込み直す（sessionStorage の印。繰り返さない）。
+    // それでも直らなければ、「もう一度読み込む」のボタン。エラーの文章は、「くわしく」の中にしまう（console にも残す）
+    var fatalShown = false;
+    function onFatal(detail) {
+      console.error("fatal: " + detail);
+      if (fatalShown) return;
+      fatalShown = true;
+      var retried = false;
+      try { retried = sessionStorage.getItem("btp.fatalRetry") === "1"; if (!retried) sessionStorage.setItem("btp.fatalRetry", "1"); } catch (e) { retried = true; }
+      var reload = function () { location.replace(location.pathname + "?v=" + Date.now()); };
+      if (!retried) { setTimeout(reload, 800); }
+      var box = document.createElement("div");
+      box.style.cssText = "position:fixed;left:0;right:0;top:0;bottom:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#86accc;color:#1c2a40;text-align:center;padding:24px;box-sizing:border-box";
+      var msg = document.createElement("div");
+      msg.style.cssText = "font-size:20px;margin-bottom:8px";
+      msg.textContent = retried ? "うまく起動できませんでした" : "うまく起動できませんでした。もう一度読み込みます…";
+      var sub = document.createElement("div");
+      sub.style.cssText = "font-size:14px;opacity:0.8;margin-bottom:18px";
+      sub.textContent = "セーブのデータは、消えていません。";
+      box.appendChild(msg); box.appendChild(sub);
+      if (retried) {
+        var b = document.createElement("button");
+        b.textContent = "もう一度読み込む";
+        b.style.cssText = "font-size:18px;padding:10px 22px;border:0;border-radius:22px;background:#345f95;color:#fff";
+        b.onclick = reload;
+        box.appendChild(b);
+        var d = document.createElement("details");
+        d.style.cssText = "margin-top:18px;max-width:90%;font-size:11px;opacity:0.7";
+        var s = document.createElement("summary"); s.textContent = "くわしく";
+        var p = document.createElement("pre"); p.style.cssText = "white-space:pre-wrap;word-break:break-all;max-height:30vh;overflow:auto;text-align:left;margin:6px 0 0";
+        p.textContent = String(detail).slice(0, 600);
+        d.appendChild(s); d.appendChild(p); box.appendChild(d);
+      }
+      document.body.appendChild(box);
+    }
+    // 起動に成功したら、自動の読み込み直しの印を消す（次に問題が起きたら、また 1 回できる）
+    function clearFatalMark() { try { sessionStorage.removeItem("btp.fatalRetry"); } catch (e) {} }
+
     function showMessage(msg) {
       warning.textContent = msg;
       warning.style.display = "block";
       setTimeout(function () { warning.style.display = "none"; }, 6000);
     }
 
-    // ビルド ID（ビルドのたびに、WebGLBuild が "20261102125050" を置き換える。置き換わっていなければ、自動更新と ?v= は使わない）。
+    // ビルド ID（ビルドのたびに、WebGLBuild が "20261102131258" を置き換える。置き換わっていなければ、自動更新と ?v= は使わない）。
     // Build の各ファイルの URL に ?v=<ID> を足して、古いキャッシュ（GitHub Pages は約 10 分）を使わない
-    window.BUILD_ID = "20261102125050";
+    window.BUILD_ID = "20261102131258";
     var HAS_BUILD_ID = !/^__/.test(window.BUILD_ID);
     var vq = HAS_BUILD_ID ? "?v=" + encodeURIComponent(window.BUILD_ID) : "";
     var buildUrl = "Build";
@@ -165,6 +203,8 @@
       productName: "BarrelToPier",
       productVersion: "1.0",
       showBanner: showMessage,
+      // 致命的なエラー：Unity の既定（スタックトレースの警告ダイアログ）を出さず、やさしい案内に置き換える（true を返すと、既定は出ない）
+      errorHandler: function (message, filename, lineno) { onFatal(String(message)); return true; },
       // 描く画素数を減らす（軽くするため）。短辺が 720 画素までになる倍率（大きい画面は 1 より小さくなり、少しぼやける）。
       // 上限は、端末の倍率（iPhone は 3 倍）と 2、下限は 0.5。画面の大きさを変えても、倍率は起動時のまま
       devicePixelRatio: Math.max(0.5, Math.min(window.devicePixelRatio || 1, 2, 720 / Math.max(1, Math.min(window.innerWidth, window.innerHeight)))),
@@ -322,6 +362,7 @@
         text.textContent = percent >= 100 ? "起動中…" : "読み込み中… " + percent + "%";
       }).then(function (unityInstance) {
         loading.style.display = "none";
+        clearFatalMark();
         window.unityInstance = unityInstance;
         if (window.flushPendingUnityMessages) window.flushPendingUnityMessages();
       }).catch(function (message) {
