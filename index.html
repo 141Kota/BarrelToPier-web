@@ -55,9 +55,9 @@
       background: #fff; color: #7a1010; padding: 8px 14px; border-radius: 6px; display: none; font-size: 14px; z-index: 10;
     }
     #debug-log {
-      position: fixed; left: 0; right: 0; bottom: 0; max-height: 40%; overflow: auto; z-index: 20; display: none;
-      margin: 0; padding: 4px 6px; background: rgba(0, 0, 0, 0.78); color: #d6e6f5;
-      font: 11px/1.35 monospace; white-space: pre-wrap; word-break: break-all; pointer-events: none;
+      position: fixed; left: 4px; bottom: 4px; width: 40%; max-width: 360px; max-height: 6.5em; overflow: hidden; z-index: 20; display: none;
+      margin: 0; padding: 2px 4px; background: rgba(0, 0, 0, 0.45); color: #d6e6f5; border-radius: 4px;
+      font: 10px/1.3 monospace; white-space: pre-wrap; word-break: break-all; pointer-events: none;
     }
   </style>
 </head>
@@ -74,7 +74,7 @@
   <pre id="debug-log"></pre>
 
   <script>
-    // index.html?debug=1 のときだけ、画面の下にログ欄（console.log / error、未処理のエラー、読み込みの失敗の、最新 20 行）
+    // index.html?debug=1 のときだけ、画面の下にログ欄（console.log / error、未処理のエラー、読み込みの失敗の、最新 6 行）
     (function () {
       var el = document.getElementById("debug-log");
       if (!/[?&]debug=1(&|$)/.test(location.search)) return;
@@ -85,7 +85,7 @@
           try { return typeof a === "string" ? a : (a && a.stack) || JSON.stringify(a); } catch (e) { return String(a); }
         }).join(" ");
         lines.push(kind + " " + s);
-        if (lines.length > 20) lines.shift();
+        if (lines.length > 6) lines.shift();
         el.textContent = lines.join("\n");
         el.scrollTop = el.scrollHeight;
       }
