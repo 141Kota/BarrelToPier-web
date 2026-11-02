@@ -139,8 +139,9 @@
       productName: "BarrelToPier",
       productVersion: "1.0",
       showBanner: showMessage,
-      // 画面の細かさ（iPhone は 3 倍。重いので 2 倍まで）
-      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      // 描く画素数を減らす（軽くするため）。短辺が 720 画素までになる倍率（大きい画面は 1 より小さくなり、少しぼやける）。
+      // 上限は、端末の倍率（iPhone は 3 倍）と 2、下限は 0.5。画面の大きさを変えても、倍率は起動時のまま
+      devicePixelRatio: Math.max(0.5, Math.min(window.devicePixelRatio || 1, 2, 720 / Math.max(1, Math.min(window.innerWidth, window.innerHeight)))),
     };
 
     var script = document.createElement("script");
