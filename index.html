@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <!-- 拡大の禁止・ノッチの下まで広げる（viewport-fit=cover）。余白は、下の padding（env(safe-area-inset-*)）で空ける -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+  <!-- 拡大の禁止・ノッチの下まで広げる（viewport-fit=cover）。余白（セーフエリア）は、ゲームが env(safe-area-inset-*) を読んで取る -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <link rel="manifest" href="manifest.webmanifest">
   <!-- ホーム画面に追加したとき、全画面で開く -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -28,15 +29,15 @@
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
     }
+    /* キャンバスは画面全体（ノッチ・ホームバーの裏も描く）。余白（セーフエリア）は、ゲーム側が env() の値を受け取って取る */
     #unity-container {
       position: fixed; left: 0; top: 0; right: 0; bottom: 0;
-      background: linear-gradient(#86accc, #b6d0e2);
-      /* ノッチ・ホームバーを避ける（ゲームの画面は、この内側に収まる） */
-      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-      box-sizing: border-box;
+      width: 100vw; height: 100vh; height: -webkit-fill-available; height: 100dvh;
+      background: #86accc;
+      padding: 0; box-sizing: border-box;
     }
     #unity-canvas {
-      display: block; width: 100%; height: 100%;
+      position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%;
       background: transparent;
       touch-action: none;
       outline: none;
@@ -143,6 +144,11 @@
       // 上限は、端末の倍率（iPhone は 3 倍）と 2、下限は 0.5。画面の大きさを変えても、倍率は起動時のまま
       devicePixelRatio: Math.max(0.5, Math.min(window.devicePixelRatio || 1, 2, 720 / Math.max(1, Math.min(window.innerWidth, window.innerHeight)))),
     };
+
+    // 画面の回転・アドレスバーの出入りで、キャンバスの大きさを追従させる（CSS の 100% は自動で追従するが、描画の画素数は Unity が resize で更新する。念のため通知する）
+    function notifyResize() { window.dispatchEvent(new Event("resize")); }
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", notifyResize);
+    window.addEventListener("orientationchange", function () { setTimeout(notifyResize, 150); });
 
     var script = document.createElement("script");
     script.src = loaderUrl;
