@@ -163,9 +163,9 @@
     var text = document.querySelector("#unity-text");
     var warning = document.querySelector("#unity-warning");
 
-    // ビルド ID（ビルドのたびに、WebGLBuild が "20261108060720" を置き換える。置き換わっていなければ、自動更新は使わない）。
+    // ビルド ID（ビルドのたびに、WebGLBuild が "20261108065927" を置き換える。置き換わっていなければ、自動更新は使わない）。
     // 公開の構成：このページは <ルート>/v/<ID>/index.html。版のフォルダは公開後に変わらないので、Build の URL に ?v= は要らない。
-    window.BUILD_ID = "20261108060720";
+    window.BUILD_ID = "20261108065927";
     var HAS_BUILD_ID = !/^__/.test(window.BUILD_ID);
     var PUBLISHED = HAS_BUILD_ID && /\/v\/[^\/]+\/[^\/]*$/.test(location.pathname);
     var ROOT_URL = PUBLISHED ? new URL("../../", location.href).href : null;
@@ -205,11 +205,12 @@
     // 起動の失敗（最初のフレームの前）：1 回だけ、この版のキャッシュを消して、起動用ページから入り直す。2 回目は、案内だけ
     function startFailed(reason, always) {
       if (fatalShown) return;
-      if (bootDone && !always) return;
+      if ((bootDone || window.btFirstFrame) && !always) return;   // 最初の画面（タイトル）まで来たあとの例外は、起動の失敗ではない
       fatalShown = true;
       var healed = false;
       try { healed = sessionStorage.getItem("bt.healed") === "1"; } catch (e) { healed = true; }
-      if (!bootDone && !healed && ROOT_URL) {
+      var debugMode = /[?&]debug=1(&|$)/.test(location.search);   // ?debug=1 のときは、自動で読み直さず、案内を出す（原因を見られるように）
+      if (!bootDone && !window.btFirstFrame && !healed && ROOT_URL && !debugMode) {
         try { sessionStorage.setItem("bt.healed", "1"); } catch (e) {}
         text.textContent = "読み込み直しています…";
         var go = function () { goRoot(true); };
@@ -398,7 +399,7 @@
       if (!pendingId || !window.btSafeToUpdate || document.visibilityState !== "visible") return;
       var id = pendingId;
       pendingId = null;
-      var go = function () { location.replace(ROOT_URL); };
+      var go = function () { location.replace(ROOT_URL + "?to=" + encodeURIComponent(id)); };
       try {
         // セーブを確実に書き込む（IndexedDB へ）。終わらなくても、1 秒で進む
         var done = false, once = function () { if (!done) { done = true; go(); } };
@@ -414,7 +415,7 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) {
           var id = j && j.buildId;
-          if (!id || id === window.BUILD_ID) return;
+          if (!id || id <= window.BUILD_ID) return;   // 古い version.json（公開直後の CDN）では、戻らない（ID は時刻で始まる）
           if (id === pendingId) { trySwitch(); return; }
           if (id === wantedId) return;
           wantedId = id;
