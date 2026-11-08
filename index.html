@@ -100,14 +100,16 @@
       var el = document.getElementById("debug-log");
       if (!/[?&]debug=1(&|$)/.test(location.search)) return;
       el.style.display = "block";
-      var lines = [];
+      var lines = [], first = null;
       function add(kind, args) {
         var s = Array.prototype.map.call(args, function (a) {
           try { return typeof a === "string" ? a : (a && a.stack) || JSON.stringify(a); } catch (e) { return String(a); }
         }).join(" ");
+        // 最初のエラー 1 件は、いちばん上に固定する（あとのログで、流されない）。残りは、新しい 5 件
+        if (kind === "[E]" && first === null) first = "★最初のエラー " + s;
         lines.push(kind + " " + s);
-        if (lines.length > 6) lines.shift();
-        el.textContent = lines.join("\n");
+        if (lines.length > 5) lines.shift();
+        el.textContent = (first !== null ? first + "\n" : "") + lines.join("\n");
         el.scrollTop = el.scrollHeight;
       }
       ["log", "error"].forEach(function (k) {
@@ -187,9 +189,9 @@
       setTimeout(function () { warning.style.display = "none"; }, 6000);
     }
 
-    // ビルド ID（ビルドのたびに、WebGLBuild が "20261102131258" を置き換える。置き換わっていなければ、自動更新と ?v= は使わない）。
+    // ビルド ID（ビルドのたびに、WebGLBuild が "20261108040514" を置き換える。置き換わっていなければ、自動更新と ?v= は使わない）。
     // Build の各ファイルの URL に ?v=<ID> を足して、古いキャッシュ（GitHub Pages は約 10 分）を使わない
-    window.BUILD_ID = "20261102131258";
+    window.BUILD_ID = "20261108040514";
     var HAS_BUILD_ID = !/^__/.test(window.BUILD_ID);
     var vq = HAS_BUILD_ID ? "?v=" + encodeURIComponent(window.BUILD_ID) : "";
     var buildUrl = "Build";
