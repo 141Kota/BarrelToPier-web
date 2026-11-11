@@ -72,6 +72,8 @@
       margin: 0; max-width: 80vw; font-size: clamp(16px, 5vw, 28px); line-height: 1.4;
       overflow-wrap: anywhere; text-wrap: balance;
     }
+    /* 向きのロックの案内（小さく。幅 320〜430 点の縦向きで、はみ出さない：幅は 84vw まで、文字は 12〜15px で、折り返す） */
+    #rotate-cover p.small { max-width: 84vw; font-size: clamp(12px, 3.6vw, 15px); line-height: 1.5; opacity: 0.8; text-wrap: wrap; overflow-wrap: break-word; }
     @keyframes rotate-phone { 0%, 15% { transform: rotate(0deg); } 65%, 100% { transform: rotate(-90deg); } }
     #debug-log {
       position: fixed; left: 4px; bottom: 4px; width: 40%; max-width: 360px; max-height: 6.5em; overflow: hidden; z-index: 20; display: none;
@@ -91,11 +93,52 @@
   </div>
   <div id="rotate-cover" role="alert">
     <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="14" y="4" width="20" height="40" rx="4" fill="#1c2a40"/><rect x="17" y="10" width="14" height="26" rx="1" fill="#86accc"/></svg>
-    <p>スマホを、横にしてください</p>
+    <p id="rotate-text">スマホを、横にしてください</p>
+    <p id="rotate-lock" class="small">横にならないときは、画面の向きのロックを、コントロールセンターで、オフにしてください</p>
   </div>
   <div id="unity-warning"></div>
   <pre id="debug-log"></pre>
 
+  <script>
+    // ---- 言語：URL の ?lang=ja / ?lang=en があれば、それ。なければ、ブラウザの言語が ja で始まれば日本語、それ以外は英語（ゲームの中も、同じ決まり＝Core の LanguageRules）----
+    (function () {
+      var q = (/[?&]lang=(ja|en)(&|#|$)/i.exec(location.search) || [])[1];
+      var nav = "";
+      try { nav = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
+      var lang = q ? q.toLowerCase() : (/^ja([-_]|$)/i.test(nav) ? "ja" : "en");
+      window.BT_LANG = lang;
+      window.BT_LANG_QUERY = q ? "lang=" + q.toLowerCase() : "";   // 上書きがあるときだけ、ページを移るときに引き継ぐ
+      var M = {
+        ja: {
+          loading: "読み込み中… ", starting: "起動中…", reloading: "読み込み直しています…",
+          rotate: "スマホを、横にしてください",
+          rotateLock: "横にならないときは、画面の向きのロックを、コントロールセンターで、オフにしてください",
+          failTitle: "うまく起動できませんでした", failNet: "通信を確認して、もう一度開いてください。", failSave: "セーブのデータは、消えていません。",
+          failMemory: "端末のメモリが足りません。ほかのアプリやタブを閉じて、もう一度開いてください。",
+          reload: "再読み込み", copyDetails: "詳しい情報をコピー", copied: "コピーしました",
+          offlineReady: "オフラインで遊べます", offlineFailed: "オフラインの準備ができませんでした"
+        },
+        en: {
+          loading: "Loading… ", starting: "Starting…", reloading: "Reloading…",
+          rotate: "Turn your phone sideways",
+          rotateLock: "If it doesn't rotate, turn off Portrait Orientation Lock in Control Center.",
+          failTitle: "The game couldn't start", failNet: "Check your connection and open it again. ", failSave: "Your save data is safe.",
+          failMemory: "Your device is low on memory. Close other apps or tabs and open it again. ",
+          reload: "Reload", copyDetails: "Copy details", copied: "Copied",
+          offlineReady: "Ready to play offline", offlineFailed: "Couldn't get ready for offline play"
+        }
+      };
+      window.BT_MSG = M[lang];
+      // Android Chrome: keep the one-tap install prompt for the in-game "Add it now" button (the game asks for it through the jslib)
+      window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); window.btInstallPrompt = e; });
+      try {
+        document.documentElement.lang = lang;
+        document.getElementById("unity-text").textContent = window.BT_MSG.loading + "0%";
+        document.getElementById("rotate-text").textContent = window.BT_MSG.rotate;
+        document.getElementById("rotate-lock").textContent = window.BT_MSG.rotateLock;
+      } catch (e) {}
+    })();
+  </script>
   <script>
     // ログの集め（常に動く）。エラーは「詳しい情報」に貯める（画面には出さない。「詳しい情報をコピー」で取り出す）。
     // index.html?debug=1 のときだけ、画面の下にログ欄（同じ文は「（同じ文が n 回）」にまとめ、スタックは 1 行に折りたたみ、最初のエラーを上に残す）
@@ -163,9 +206,9 @@
     var text = document.querySelector("#unity-text");
     var warning = document.querySelector("#unity-warning");
 
-    // ビルド ID（ビルドのたびに、WebGLBuild が "20261108065927" を置き換える。置き換わっていなければ、自動更新は使わない）。
+    // ビルド ID（ビルドのたびに、WebGLBuild が "__BUILD_ID__" を置き換える。置き換わっていなければ、自動更新は使わない）。
     // 公開の構成：このページは <ルート>/v/<ID>/index.html。版のフォルダは公開後に変わらないので、Build の URL に ?v= は要らない。
-    window.BUILD_ID = "20261108075929";
+    window.BUILD_ID = "20261111135339";
     var HAS_BUILD_ID = !/^__/.test(window.BUILD_ID);
     var PUBLISHED = HAS_BUILD_ID && /\/v\/[^\/]+\/[^\/]*$/.test(location.pathname);
     var ROOT_URL = PUBLISHED ? new URL("../../", location.href).href : null;
@@ -180,25 +223,26 @@
     }
     function goRoot(heal) {
       var base = ROOT_URL || (location.pathname);
-      location.replace(ROOT_URL ? ROOT_URL + (heal ? "?heal=1" : "") : base + "?v=" + Date.now());
+      var lq = window.BT_LANG_QUERY ? "&" + window.BT_LANG_QUERY : "";   // 言語の上書き（?lang=）は、ページを移っても引き継ぐ
+      location.replace(ROOT_URL ? ROOT_URL + (heal ? "?heal=1" + lq : (lq ? "?" + lq.slice(1) : "")) : base + "?v=" + Date.now() + lq);
     }
     function showFailBox(reason) {
       var box = document.createElement("div");
       box.style.cssText = "position:fixed;left:0;right:0;top:0;bottom:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#86accc;color:#1c2a40;text-align:center;padding:24px;box-sizing:border-box";
       var msg = document.createElement("div");
       msg.style.cssText = "font-size:20px;margin-bottom:8px";
-      msg.textContent = "うまく起動できませんでした";
+      msg.textContent = BT_MSG.failTitle;
       var sub = document.createElement("div");
       sub.style.cssText = "font-size:14px;opacity:0.85;margin-bottom:18px;max-width:90%";
-      sub.textContent = (reason || "通信を確認して、もう一度開いてください。") + "セーブのデータは、消えていません。";
+      sub.textContent = (reason || BT_MSG.failNet) + BT_MSG.failSave;
       var b = document.createElement("button");
-      b.textContent = "再読み込み";
+      b.textContent = BT_MSG.reload;
       b.style.cssText = "font-size:18px;padding:10px 22px;border:0;border-radius:22px;background:#345f95;color:#fff";
       b.onclick = function () { try { sessionStorage.removeItem("bt.healed"); } catch (e) {} goRoot(true); };
       var c = document.createElement("button");
-      c.textContent = "詳しい情報をコピー";
+      c.textContent = BT_MSG.copyDetails;
       c.style.cssText = "margin-top:16px;font-size:12px;padding:6px 14px;border:0;border-radius:14px;background:rgba(28,42,64,0.15);color:#1c2a40";
-      c.onclick = function () { btCopy("build=" + window.BUILD_ID + "\n" + window.btDetails.join("\n")); c.textContent = "コピーしました"; };
+      c.onclick = function () { btCopy("build=" + window.BUILD_ID + "\n" + window.btDetails.join("\n")); c.textContent = BT_MSG.copied; };
       box.appendChild(msg); box.appendChild(sub); box.appendChild(b); box.appendChild(c);
       document.body.appendChild(box);
     }
@@ -212,7 +256,7 @@
       var debugMode = /[?&]debug=1(&|$)/.test(location.search);   // ?debug=1 のときは、自動で読み直さず、案内を出す（原因を見られるように）
       if (!bootDone && !window.btFirstFrame && !healed && ROOT_URL && !debugMode) {
         try { sessionStorage.setItem("bt.healed", "1"); } catch (e) {}
-        text.textContent = "読み込み直しています…";
+        text.textContent = BT_MSG.reloading;
         var go = function () { goRoot(true); };
         try {
           if (window.caches) caches.delete("bt-" + window.BUILD_ID).then(go, go); else go();
@@ -378,8 +422,8 @@
         var m = e.data || {};
         if (m.type !== "precache-done") return;
         if (m.id === window.BUILD_ID) {
-          if (m.ok) { try { localStorage.setItem("bt.cachedBuild", m.id); } catch (x) {} toast("オフラインで遊べます"); }
-          else toast("オフラインの準備ができませんでした");
+          if (m.ok) { try { localStorage.setItem("bt.cachedBuild", m.id); } catch (x) {} toast(BT_MSG.offlineReady); }
+          else toast(BT_MSG.offlineFailed);
         } else if (m.id === wantedId && m.ok) {
           pendingId = m.id;
           trySwitch();
@@ -399,7 +443,7 @@
       if (!pendingId || !window.btSafeToUpdate || document.visibilityState !== "visible") return;
       var id = pendingId;
       pendingId = null;
-      var go = function () { location.replace(ROOT_URL + "?to=" + encodeURIComponent(id)); };
+      var go = function () { location.replace(ROOT_URL + "?to=" + encodeURIComponent(id) + (window.BT_LANG_QUERY ? "&" + window.BT_LANG_QUERY : "")); };
       try {
         // セーブを確実に書き込む（IndexedDB へ）。終わらなくても、1 秒で進む
         var done = false, once = function () { if (!done) { done = true; go(); } };
@@ -433,13 +477,13 @@
     script.src = loaderUrl;
     script.onerror = function () {
       console.error("loader not found: " + loaderUrl);
-      startFailed("通信を確認して、もう一度開いてください。");
+      startFailed(BT_MSG.failNet);
     };
     script.onload = function () {
       createUnityInstance(canvas, config, function (progress) {
         var percent = Math.round(progress * 100);
         fill.style.width = percent + "%";
-        text.textContent = percent >= 100 ? "起動中…" : "読み込み中… " + percent + "%";
+        text.textContent = percent >= 100 ? BT_MSG.starting : BT_MSG.loading + percent + "%";
       }).then(function (unityInstance) {
         loading.style.display = "none";
         bootDone = true;
@@ -450,7 +494,7 @@
       }).catch(function (message) {
         var m = String(message && message.message || message);
         console.error("createUnityInstance: " + m);
-        startFailed(/memory|alloc|out of/i.test(m) ? "端末のメモリが足りません。ほかのアプリやタブを閉じて、もう一度開いてください。" : null);
+        startFailed(/memory|alloc|out of/i.test(m) ? BT_MSG.failMemory : null);
       });
     };
     document.body.appendChild(script);

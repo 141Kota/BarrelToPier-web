@@ -32,17 +32,30 @@
     (function () {
       var msg = document.getElementById("msg"), retry = document.getElementById("retry");
       var heal = /[?&]heal=1(&|$)/.test(location.search);
+      // 言語：?lang=ja / ?lang=en があれば、それ（版のページへ引き継ぐ）。なければ、ブラウザの言語が ja で始まれば日本語、それ以外は英語
+      var langQ = (/[?&]lang=(ja|en)(&|#|$)/i.exec(location.search) || [])[1];
+      var nav = "";
+      try { nav = String(navigator.language || (navigator.languages && navigator.languages[0]) || ""); } catch (e) {}
+      var lang = langQ ? langQ.toLowerCase() : (/^ja([-_]|$)/i.test(nav) ? "ja" : "en");
+      var MSG = lang === "ja"
+        ? { loading: "読み込み中…", fail: "通信を確認して、もう一度開いてください。", reload: "再読み込み" }
+        : { loading: "Loading…", fail: "Check your connection and open it again.", reload: "Reload" };
+      try { document.documentElement.lang = lang; msg.textContent = MSG.loading; retry.textContent = MSG.reload; } catch (e) {}
       function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
       function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
       function go(id) {
         if (!/^[0-9A-Za-z_-]+$/.test(id)) return fail();
         set("bt.lastBuild", id);
-        location.replace("v/" + id + "/index.html" + (heal ? "?r=" + Date.now() : ""));
+        var q = [];
+        if (heal) q.push("r=" + Date.now());
+        if (langQ) q.push("lang=" + langQ.toLowerCase());
+        // #bt=... は、ホーム画面に追加したとき、セーブを運ぶ印（ゲームが、URL の末尾に付ける）。版のページへ、そのまま引き継ぐ
+        location.replace("v/" + id + "/index.html" + (q.length ? "?" + q.join("&") : "") + (/^#bt=/.test(location.hash) ? location.hash : ""));
       }
       function fail() {
-        msg.textContent = "通信を確認して、もう一度開いてください。";
+        msg.textContent = MSG.fail;
         retry.style.display = "inline-block";
-        retry.onclick = function () { location.replace(location.pathname); };
+        retry.onclick = function () { location.replace(location.pathname + (langQ ? "?lang=" + langQ.toLowerCase() : "")); };
       }
       // ゲームから切り替えるとき（?to=<版>）：準備が済んだ版へ、そのまま入る（version.json を見ない。古い version.json で、元の版へ戻る繰り返しを防ぐ）
       var to = (/[?&]to=([0-9A-Za-z_-]+)/.exec(location.search) || [])[1];
