@@ -49,8 +49,7 @@
         var q = [];
         if (heal) q.push("r=" + Date.now());
         if (langQ) q.push("lang=" + langQ.toLowerCase());
-        // #bt=... は、ホーム画面に追加したとき、セーブを運ぶ印（ゲームが、URL の末尾に付ける）。版のページへ、そのまま引き継ぐ
-        location.replace("v/" + id + "/index.html" + (q.length ? "?" + q.join("&") : "") + (/^#bt=/.test(location.hash) ? location.hash : ""));
+        location.replace("v/" + id + "/index.html" + (q.length ? "?" + q.join("&") : ""));
       }
       function fail() {
         msg.textContent = MSG.fail;
